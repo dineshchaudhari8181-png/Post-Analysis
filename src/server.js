@@ -183,12 +183,12 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
       const csvContent = generateCSV(summary);
       const filename = `post-analysis-${metadata.messageTs.replace(/\./g, '-')}.csv`;
 
-      // Upload to Slack and send to user
+      // Upload to Slack and send to user using uploadV2 (recommended method)
       try {
-        const fileUpload = await client.files.upload({
-          channels: payload.user.id,
+        const fileUpload = await client.files.uploadV2({
+          channel_id: payload.user.id,
+          file: Buffer.from(csvContent, 'utf-8'),
           filename,
-          content: csvContent,
           title: `Post Analysis - ${summary.message.channel_name}`,
           initial_comment: `Here's your Post Analysis CSV export for message in <#${metadata.channelId}>.`,
         });
