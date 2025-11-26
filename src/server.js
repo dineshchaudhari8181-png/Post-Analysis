@@ -8,6 +8,7 @@ const messageRepository = require('./services/messageRepository');
 const { analyzeReply } = require('./services/sentiment');
 const { buildSummaryModal } = require('./services/slackModal');
 const { analyzeThreadForMessage } = require('./services/advancedSentiment');
+const { generateCSV } = require('./services/csvGenerator');
 
 const slackEvents = createEventAdapter(config.slack.signingSecret);
 const app = express();
@@ -63,6 +64,51 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
         trigger_id: payload.trigger_id,
         view: buildSummaryModal(summary),
       });
+    } else if (payload.type === 'block_actions' && payload.actions?.[0]?.action_id === 'download_csv') {
+      // Handle Download CSV button click
+      const metadata = payload.view?.private_metadata ? JSON.parse(payload.view.private_metadata) : null;
+      if (!metadata || !metadata.channelId || !metadata.messageTs) {
+        console.warn('Missing metadata for CSV download', metadata);
+        res.status(200).send();
+        return;
+      }
+
+      console.log('Download CSV requested', { channelId: metadata.channelId, messageTs: metadata.messageTs });
+
+      const summary = await messageRepository.getMessageSummary(metadata.channelId, metadata.messageTs);
+      if (!summary) {
+        console.warn('No summary found for CSV download', metadata);
+        res.status(200).send();
+        return;
+      }
+
+      // Generate CSV
+      const csvContent = generateCSV(summary);
+      const filename = `post-analysis-${metadata.messageTs.replace(/\./g, '-')}.csv`;
+
+      // Upload to Slack and send to user
+      try {
+        const fileUpload = await client.files.upload({
+          channels: payload.user.id,
+          filename,
+          content: csvContent,
+          title: `Post Analysis - ${summary.message.channel_name}`,
+          initial_comment: `Here's your Post Analysis CSV export for message in <#${metadata.channelId}>.`,
+        });
+
+        console.log('CSV file uploaded successfully', fileUpload);
+      } catch (uploadError) {
+        console.error('Failed to upload CSV file', uploadError);
+        // Try to send a message to the user about the error
+        try {
+          await client.chat.postMessage({
+            channel: payload.user.id,
+            text: `Sorry, I couldn't generate the CSV file. Error: ${uploadError.message}`,
+          });
+        } catch (msgError) {
+          console.error('Failed to send error message', msgError);
+        }
+      }
     }
     res.status(200).send();
   } catch (error) {

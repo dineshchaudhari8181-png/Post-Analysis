@@ -27,6 +27,10 @@ function buildSummaryModal(summary) {
     callback_id: 'post_analysis_modal',
     title: { type: 'plain_text', text: 'Post Analysis', emoji: true },
     close: { type: 'plain_text', text: 'Close', emoji: true },
+    private_metadata: JSON.stringify({
+      channelId: summary.channelId,
+      messageTs: summary.message.slack_ts,
+    }),
     blocks: [
       {
         type: 'section',
@@ -69,6 +73,25 @@ function buildSummaryModal(summary) {
       {
         type: 'section',
         text: { type: 'mrkdwn', text: repliesBlock },
+      },
+      {
+        type: 'divider',
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: {
+              type: 'plain_text',
+              text: 'Download CSV',
+              emoji: true,
+            },
+            style: 'primary',
+            action_id: 'download_csv',
+            value: 'download',
+          },
+        ],
       },
     ],
   };
