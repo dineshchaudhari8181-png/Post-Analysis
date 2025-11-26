@@ -127,21 +127,28 @@ async function analyzeThreadSentiment(messages = [], reactions = []) {
     let finalScore = result.score;
 
     if (finalScore === 0 && geminiClient) {
+      // Try user's preferred model first, then fallbacks
       const modelsToTry = [
         config.google.model,
         'gemini-2.5-flash',
         'gemini-1.5-flash',
         'gemini-1.5-pro',
-        'gemini-pro',
       ].filter((model, idx, arr) => model && arr.indexOf(model) === idx);
 
       // eslint-disable-next-line no-restricted-syntax
       for (const modelName of modelsToTry) {
-        // eslint-disable-next-line no-await-in-loop
-        const geminiScore = await analyzeWithGemini(text, context, modelName);
-        if (geminiScore !== 0) {
-          finalScore = geminiScore;
-          break;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const geminiScore = await analyzeWithGemini(text, context, modelName);
+          if (geminiScore !== 0) {
+            finalScore = geminiScore;
+            console.log(`Gemini analysis successful with model: ${modelName}`);
+            break;
+          }
+        } catch (modelError) {
+          // Continue to next model if this one fails
+          console.warn(`Gemini model "${modelName}" failed, trying next...`, modelError.message);
+          continue;
         }
       }
     }

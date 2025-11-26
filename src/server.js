@@ -42,28 +42,125 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
       const messageTs = payload.message?.ts;
       console.log('Post Analysis shortcut invoked', { channelId, messageTs });
 
-      await ensureMessageRecord(channelId, messageTs, payload.message?.text, payload.message?.user);
-      const summary = await messageRepository.getMessageSummary(channelId, messageTs);
-      let advanced = null;
+      // Open modal immediately to avoid trigger_id expiration
+      const loadingModal = {
+        type: 'modal',
+        callback_id: 'post_analysis_loading',
+        title: { type: 'plain_text', text: 'Post Analysis', emoji: true },
+        close: { type: 'plain_text', text: 'Close', emoji: true },
+        private_metadata: JSON.stringify({ channelId, messageTs }),
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*Analyzing message...* :hourglass_flowing_sand:',
+            },
+          },
+          {
+            type: 'context',
+            elements: [
+              {
+                type: 'mrkdwn',
+                text: 'Please wait while we analyze sentiment, reactions, and replies.',
+              },
+            ],
+          },
+        ],
+      };
+
+      let viewId = null;
+      let viewHash = null;
       try {
-        advanced = await analyzeThreadForMessage(channelId, messageTs);
-      } catch (err) {
-        console.warn('Advanced sentiment analysis failed', err.message);
-      }
-      if (advanced) {
-        summary.combinedSentiment = advanced.combinedScore;
-        summary.mood = advanced.mood;
-        summary.advanced = advanced;
-      }
-      if (!summary) {
-        console.warn('No summary found for message', { channelId, messageTs });
+        const openedView = await client.views.open({
+          trigger_id: payload.trigger_id,
+          view: loadingModal,
+        });
+        viewId = openedView?.view?.id;
+        viewHash = openedView?.view?.hash;
+      } catch (openError) {
+        console.error('Failed to open modal', openError);
         res.status(200).send();
         return;
       }
-      await client.views.open({
-        trigger_id: payload.trigger_id,
-        view: buildSummaryModal(summary),
-      });
+
+      // Now do the analysis in background and update modal
+      (async () => {
+        try {
+          await ensureMessageRecord(channelId, messageTs, payload.message?.text, payload.message?.user);
+          const summary = await messageRepository.getMessageSummary(channelId, messageTs);
+          
+          if (!summary) {
+            console.warn('No summary found for message', { channelId, messageTs });
+            if (viewId) {
+              await client.views.update({
+                view_id: viewId,
+                hash: viewHash,
+                view: {
+                  type: 'modal',
+                  title: { type: 'plain_text', text: 'Post Analysis', emoji: true },
+                  close: { type: 'plain_text', text: 'Close', emoji: true },
+                  blocks: [
+                    {
+                      type: 'section',
+                      text: {
+                        type: 'mrkdwn',
+                        text: '*No data found* for this message.',
+                      },
+                    },
+                  ],
+                },
+              });
+            }
+            return;
+          }
+
+          // Try advanced analysis (but don't block if it fails)
+          let advanced = null;
+          try {
+            advanced = await analyzeThreadForMessage(channelId, messageTs);
+          } catch (err) {
+            console.warn('Advanced sentiment analysis failed', err.message);
+          }
+          
+          if (advanced) {
+            summary.combinedSentiment = advanced.combinedScore;
+            summary.mood = advanced.mood;
+            summary.advanced = advanced;
+          }
+
+          // Update modal with results
+          if (viewId) {
+            await client.views.update({
+              view_id: viewId,
+              hash: viewHash,
+              view: buildSummaryModal(summary),
+            });
+          }
+        } catch (error) {
+          console.error('Error processing analysis', error);
+          if (viewId) {
+            await client.views.update({
+              view_id: viewId,
+              hash: viewHash,
+              view: {
+                type: 'modal',
+                title: { type: 'plain_text', text: 'Post Analysis', emoji: true },
+                close: { type: 'plain_text', text: 'Close', emoji: true },
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: '*Error*: Failed to analyze message. Please try again.',
+                    },
+                  },
+                ],
+              },
+            });
+          }
+        }
+      })();
     } else if (payload.type === 'block_actions' && payload.actions?.[0]?.action_id === 'download_csv') {
       // Handle Download CSV button click
       const metadata = payload.view?.private_metadata ? JSON.parse(payload.view.private_metadata) : null;
