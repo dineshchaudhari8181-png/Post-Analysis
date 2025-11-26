@@ -185,8 +185,20 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
 
       // Upload to Slack and send to user using uploadV2 (recommended method)
       try {
+        // Ensure we have a valid conversation (channel) id for the user. Slack file uploads
+        // expect a channel id starting with C/G/D/Z — a plain user id (U...) will be rejected.
+        let uploadChannelId = payload.user.id;
+        try {
+          const conv = await client.conversations.open({ users: payload.user.id });
+          if (conv && conv.channel && conv.channel.id) {
+            uploadChannelId = conv.channel.id;
+          }
+        } catch (convErr) {
+          console.warn('Could not open DM for user, will attempt upload using provided id', convErr.message);
+        }
+
         const fileUpload = await client.files.uploadV2({
-          channel_id: payload.user.id,
+          channel_id: uploadChannelId,
           file: Buffer.from(csvContent, 'utf-8'),
           filename,
           title: `Post Analysis - ${summary.message.channel_name}`,
@@ -196,14 +208,16 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
         console.log('CSV file uploaded successfully', fileUpload);
       } catch (uploadError) {
         console.error('Failed to upload CSV file', uploadError);
-        // Try to send a message to the user about the error
+        // Try to DM the user about the error (use conversations.open to get a valid channel id)
         try {
+          const conv = await client.conversations.open({ users: payload.user.id });
+          const dmChannel = conv?.channel?.id || payload.user.id;
           await client.chat.postMessage({
-            channel: payload.user.id,
+            channel: dmChannel,
             text: `Sorry, I couldn't generate the CSV file. Error: ${uploadError.message}`,
           });
         } catch (msgError) {
-          console.error('Failed to send error message', msgError);
+          console.error('Failed to send error message to user', msgError);
         }
       }
     }
