@@ -10,6 +10,9 @@ function formatUsers(reactions) {
 }
 
 function buildSummaryModal(summary) {
+  const moodText = summary.mood
+    ? `${summary.mood.emoji} ${summary.mood.label}`
+    : 'N/A';
   const reactionsBlock = summary.reactions.length
     ? formatUsers(summary.reactions)
     : 'No reactions yet.';
@@ -47,6 +50,7 @@ function buildSummaryModal(summary) {
           { type: 'mrkdwn', text: `*Emoji Sentiment*\n${summary.emojiSentiment.toFixed(2)}` },
           { type: 'mrkdwn', text: `*Reply Sentiment*\n${summary.replySentiment.toFixed(2)}` },
           { type: 'mrkdwn', text: `*Combined*\n${summary.combinedSentiment.toFixed(2)}` },
+          { type: 'mrkdwn', text: `*Mood*\n${moodText}` },
           { type: 'mrkdwn', text: `*Total Replies*\n${summary.totalReplies}` },
         ],
       },

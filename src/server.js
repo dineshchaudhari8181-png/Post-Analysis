@@ -7,6 +7,7 @@ const { client, fetchUser, fetchChannel } = require('./services/slackClient');
 const messageRepository = require('./services/messageRepository');
 const { analyzeReply } = require('./services/sentiment');
 const { buildSummaryModal } = require('./services/slackModal');
+const { analyzeThreadForMessage } = require('./services/advancedSentiment');
 
 const slackEvents = createEventAdapter(config.slack.signingSecret);
 const app = express();
@@ -39,6 +40,17 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
 
       await ensureMessageRecord(channelId, messageTs, payload.message?.text, payload.message?.user);
       const summary = await messageRepository.getMessageSummary(channelId, messageTs);
+      let advanced = null;
+      try {
+        advanced = await analyzeThreadForMessage(channelId, messageTs);
+      } catch (err) {
+        console.warn('Advanced sentiment analysis failed', err.message);
+      }
+      if (advanced) {
+        summary.combinedSentiment = advanced.combinedScore;
+        summary.mood = advanced.mood;
+        summary.advanced = advanced;
+      }
       if (!summary) {
         console.warn('No summary found for message', { channelId, messageTs });
         res.status(200).send();

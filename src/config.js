@@ -20,6 +20,7 @@ module.exports = {
   },
   google: {
     apiKey: process.env.GOOGLE_API_KEY || '',
+    model: process.env.GEMINI_MODEL || '',
   },
 };
 
