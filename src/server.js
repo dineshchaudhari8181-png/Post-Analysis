@@ -33,7 +33,10 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
       callback_id: payload.callback_id,
     });
 
-    if (payload.type === 'message_action' && payload.callback_id === 'post_analysis_shortcut') {
+    if (
+      payload.type === 'message_action'
+      && (payload.callback_id === 'post_analysis_shortcut' || payload.callback_id === 'post-analysis')
+    ) {
       const channelId = payload.channel?.id;
       const messageTs = payload.message?.ts;
       console.log('Post Analysis shortcut invoked', { channelId, messageTs });
