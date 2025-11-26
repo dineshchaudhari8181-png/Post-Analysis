@@ -11,6 +11,8 @@ const { buildSummaryModal } = require('./services/slackModal');
 const slackEvents = createEventAdapter(config.slack.signingSecret);
 const app = express();
 
+app.use('/slack/events', slackEvents.expressMiddleware());
+
 app.use(bodyParser.json());
 app.use(
   bodyParser.urlencoded({
@@ -45,8 +47,6 @@ app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async
     res.status(500).send();
   }
 });
-
-app.use('/slack/events', slackEvents.expressMiddleware());
 
 slackEvents.on('message', async (event) => {
   try {
