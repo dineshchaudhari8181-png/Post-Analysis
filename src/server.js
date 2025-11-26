@@ -27,12 +27,20 @@ app.get('/health', (_req, res) => {
 app.post('/slack/interactions', bodyParser.urlencoded({ extended: true }), async (req, res) => {
   try {
     const payload = JSON.parse(req.body.payload);
+    console.log('Received interaction', {
+      type: payload.type,
+      callback_id: payload.callback_id,
+    });
+
     if (payload.type === 'message_action' && payload.callback_id === 'post_analysis_shortcut') {
       const channelId = payload.channel?.id;
       const messageTs = payload.message?.ts;
+      console.log('Post Analysis shortcut invoked', { channelId, messageTs });
+
       await ensureMessageRecord(channelId, messageTs, payload.message?.text, payload.message?.user);
       const summary = await messageRepository.getMessageSummary(channelId, messageTs);
       if (!summary) {
+        console.warn('No summary found for message', { channelId, messageTs });
         res.status(200).send();
         return;
       }
@@ -52,6 +60,13 @@ slackEvents.on('message', async (event) => {
   try {
     if (event.subtype && event.subtype !== 'thread_broadcast') return;
     if (!event.user || !event.channel) return;
+
+    console.log('Slack message event', {
+      ts: event.ts,
+      thread_ts: event.thread_ts,
+      channel: event.channel,
+      user: event.user,
+    });
 
     const [channel, user] = await Promise.all([
       fetchChannel(event.channel),
